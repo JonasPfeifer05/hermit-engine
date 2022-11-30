@@ -1,5 +1,5 @@
 use wgpu::{BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingType, Buffer, ShaderStages};
-use crate::canvas::Canvas;
+use crate::rendering::canvas::Canvas;
 
 pub struct BindGroupBuilder {
 

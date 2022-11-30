@@ -1,6 +1,6 @@
 use wgpu::{ShaderModule, VertexBufferLayout, VertexState};
-use crate::canvas::Canvas;
-use crate::resources::load_string;
+use crate::rendering::canvas::Canvas;
+use crate::util::resources::load_string;
 
 pub struct VertexEntry {}
 impl VertexEntry {

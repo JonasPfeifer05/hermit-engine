@@ -1,7 +1,7 @@
 use bytemuck::Pod;
 use wgpu::Buffer;
 use wgpu::util::DeviceExt;
-use crate::canvas::Canvas;
+use crate::rendering::canvas::Canvas;
 
 pub struct BufferBuilder {}
 

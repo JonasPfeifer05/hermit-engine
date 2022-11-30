@@ -1,5 +1,5 @@
 use std::ops::Range;
-use crate::textures;
+use crate::util::textures;
 
 // model.rs
 pub trait Vertex {

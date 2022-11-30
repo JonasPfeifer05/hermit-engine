@@ -270,7 +270,7 @@ pub async fn run() {
     let (event_loop, window) = HermitWindow::new(WindowData::new(true, "HERMIT ENGINE".to_string(), PhysicalSize::new(800,800))).await;
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = Engine::new(&window).await;
+    let mut engine = Engine::new(&window).await;
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -278,7 +278,7 @@ pub async fn run() {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                if !state.input(event) {
+                if !engine.input(event) {
                     // UPDATED!
                     match event {
                         WindowEvent::CloseRequested
@@ -292,22 +292,22 @@ pub async fn run() {
                             ..
                         } => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {
-                            state.resize(*physical_size);
+                            engine.resize(*physical_size);
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                             // new_inner_size is &&mut so w have to dereference it twice
-                            state.resize(**new_inner_size);
+                            engine.resize(**new_inner_size);
                         }
                         _ => {}
                     }
                 }
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                state.update();
-                match state.render() {
+                engine.update();
+                match engine.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.canvas.size),
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => engine.resize(engine.canvas.size),
                     // The system is out of memory, we should probably quit
                     Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
 

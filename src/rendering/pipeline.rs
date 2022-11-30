@@ -1,7 +1,7 @@
 use wgpu::{BindGroupLayout, FragmentState, RenderPipeline, VertexState};
-use crate::canvas::Canvas;
-use crate::shader::FragmentEntry;
-use crate::textures;
+use crate::rendering::canvas::Canvas;
+use crate::rendering::shader::FragmentEntry;
+use crate::util::textures;
 
 pub struct Pipeline {
 
