@@ -7,7 +7,7 @@ mod shape;
 use std::fs::remove_dir;
 use std::iter;
 use cgmath::{InnerSpace, Rotation3, Zero};
-use wgpu::{BindGroup, BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, ShaderStages, VertexBufferLayout};
+use wgpu::{BindGroup, BindGroupLayout, BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, ShaderStages, VertexBufferLayout};
 use wgpu::BindingResource::{Sampler, TextureView};
 use wgpu::IndexFormat::Uint16;
 
@@ -68,13 +68,31 @@ impl<'a> Engine<'a> {
         let canvas = Canvas::new(window).await;
 
         let shader = Shader::new("shaders/color.wgsl", &canvas).await;
+        let shader2 = Shader::new("shaders/texture.wgsl", &canvas).await;
 
-        let polygon = Polygon::new(&shader, VERTICES, INDICES, &canvas);
-        //let polygon = Polygon::new(ShapeData::new(&shader, VERTICES, Some(INDICES)), &canvas);
-        let rectangle = Rectangle::new(&shader, VERTICES2, &canvas);
-        //let rectangle = Rectangle::new(ShapeData::new(&shader, VERTICES2, None), &canvas);
-        let triangle = Triangle::new(&shader, VERTICES3, &canvas);
-        //let triangle = Triangle::new(ShapeData::new(&shader, VERTICES3, None), &canvas);
+        let diffuse_bytes = include_bytes!("../res/cube-diffuse.jpg");
+        let diffuse_texture = Texture::from_bytes(&canvas.device, &canvas.queue, diffuse_bytes, "cube-diffuse").unwrap();
+        let (dbgl, diffuse_bind_group) = BindGroupBuilder::new(&canvas,
+            &[
+                    LayoutEntry::new(0, ShaderStages::FRAGMENT, BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    }),
+                    LayoutEntry::new(1, ShaderStages::FRAGMENT, BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                ],
+            &[
+                GroupEntry::new_binding_resource(0, TextureView(&diffuse_texture.view)),
+                GroupEntry::new_binding_resource(1, Sampler(&diffuse_texture.sampler)),
+            ],
+            None,
+            true
+        );
+        let dbg = diffuse_bind_group.unwrap();
+
+        let polygon = Polygon::new(&shader, VERTICES, INDICES, None, &canvas);
+        let rectangle = Rectangle::new(&shader2, VERTICES2, Some((dbgl,dbg)), &canvas);
+        let triangle = Triangle::new(&shader,VERTICES3, None, &canvas);
 
         /*
         let shader = Shader::new("shaders/shader.wgsl", &canvas).await;
@@ -179,7 +197,6 @@ impl<'a> Engine<'a> {
             polygon,
             rectangle,
             triangle,
-
             /*
             /*
              */
@@ -373,10 +390,10 @@ const VERTICES: &[Vertex] = &[
 ];
 
 const VERTICES2: &[Vertex; 4] = &[
-    Vertex { position: [-1.0,1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [-1.0,1.0,0.0], color_or_coord: [0.0,0.0,0.0] },
     Vertex { position: [0.0,1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
-    Vertex { position: [0.0,-0.0,0.0], color_or_coord: [1.0,0.0,0.0] },
-    Vertex { position: [-1.0,0.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [0.0,-0.0,0.0], color_or_coord: [1.0,1.0,0.0] },
+    Vertex { position: [-1.0,0.0,0.0], color_or_coord: [0.0,1.0,0.0] },
 ];
 
 const VERTICES3: &[Vertex; 3] = &[
