@@ -2,10 +2,14 @@ mod window;
 mod camera;
 mod rendering;
 mod util;
+mod shape;
 
+use std::fs::remove_dir;
 use std::iter;
 use cgmath::{InnerSpace, Rotation3, Zero};
-use wgpu::{BindingType, BufferBindingType, BufferUsages, ShaderStages};
+use wgpu::{BindGroup, BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, ShaderStages, VertexBufferLayout};
+use wgpu::BindingResource::{Sampler, TextureView};
+use wgpu::IndexFormat::Uint16;
 
 use winit::{
     event::*,
@@ -19,26 +23,29 @@ use wasm_bindgen::prelude::*;
 use rendering::bind_group::{BindGroupBuilder, GroupEntry, LayoutEntry};
 use camera::camera_controller::CameraController;
 use crate::camera::camera::{Camera, CameraUniform};
+use crate::rendering::bind_group;
 use crate::rendering::buffer::BufferBuilder;
 use crate::rendering::canvas::Canvas;
 use crate::rendering::instance::{Instance, InstanceRaw, NUM_INSTANCES_PER_ROW};
-use crate::rendering::model::{DrawModel, Model, ModelVertex, Vertex};
+use crate::rendering::model::{DrawModel, Material, Mesh, Model, ModelVertex};
 use crate::rendering::pipeline::Pipeline;
 use crate::rendering::shader::{FragmentEntry, Shader, VertexEntry};
+use crate::shape::shape_drawer::{Vertex, Polygon, Rectangle, Shape, ShapeDrawer, Triangle, ShapeData};
 use crate::util::resources;
 use crate::util::textures::Texture;
 use crate::window::{HermitWindow, WindowData};
 
-struct Engine {
+struct Engine<'a> {
     canvas: Canvas,
 
-    render_pipeline: wgpu::RenderPipeline,
+    polygon: Polygon<'a>,
+    rectangle: Rectangle<'a>,
+    triangle: Triangle<'a>,
 
     /*
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
+    /*
      */
+    square: Square,
 
     camera: Camera,
     camera_controller: CameraController,
@@ -53,19 +60,30 @@ struct Engine {
     depth_texture: Texture,
 
     obj_model: Model,
+     */
 }
 
-impl Engine {
-    async fn new(window: &Window) -> Self {
+impl<'a> Engine<'a> {
+    async fn new(window: &Window) -> Engine<'a> {
         let canvas = Canvas::new(window).await;
 
-        let shader = Shader::new("shaders/shader.wgsl", &canvas).await;
+        let shader = Shader::new("shaders/color.wgsl", &canvas).await;
+
+        let polygon = Polygon::new(&shader, VERTICES, INDICES, &canvas);
+        //let polygon = Polygon::new(ShapeData::new(&shader, VERTICES, Some(INDICES)), &canvas);
+        let rectangle = Rectangle::new(&shader, VERTICES2, &canvas);
+        //let rectangle = Rectangle::new(ShapeData::new(&shader, VERTICES2, None), &canvas);
+        let triangle = Triangle::new(&shader, VERTICES3, &canvas);
+        //let triangle = Triangle::new(ShapeData::new(&shader, VERTICES3, None), &canvas);
 
         /*
+        let shader = Shader::new("shaders/shader.wgsl", &canvas).await;
+
+
         let vertex_buffer = BufferBuilder::new(VERTICES, BufferUsages::VERTEX, Some("Vertex Shader"), &canvas);
         let index_buffer = BufferBuilder::new(INDICES, BufferUsages::INDEX, Some("Index Buffer"), &canvas);
         let num_indices = INDICES.len() as u32;
-         */
+
 
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
@@ -90,7 +108,7 @@ impl Engine {
             })],
             &[GroupEntry::new(0, &camera_buffer)],
             Some("Camera bind group"),
-            true
+            true,
         );
         let camera_bind_group = camera_bind_group.unwrap();
 
@@ -111,7 +129,8 @@ impl Engine {
                 };
 
                 Instance {
-                    position, rotation,
+                    position,
+                    rotation,
                 }
             })
         }).collect::<Vec<_>>();
@@ -152,14 +171,20 @@ impl Engine {
             FragmentEntry::new(&shader.shader_mod, "fs_main"),
         );
 
+        let square = Square::new(&canvas, &camera_bind_group_layout).await;
+         */
+
         Self {
             canvas,
-            render_pipeline,
+            polygon,
+            rectangle,
+            triangle,
+
             /*
-            vertex_buffer,
-            index_buffer,
-            num_indices,
+            /*
              */
+
+            square,
             camera,
             camera_controller,
             camera_uniform,
@@ -168,7 +193,8 @@ impl Engine {
             instances,
             instance_buffer,
             depth_texture,
-            obj_model
+            obj_model,
+             */
         }
     }
 
@@ -179,18 +205,19 @@ impl Engine {
             self.canvas.config.height = new_size.height;
             self.canvas.surface.configure(&self.canvas.device, &self.canvas.config);
         }
-        self.depth_texture = Texture::create_depth_texture(&self.canvas.device, &self.canvas.config, "depth_texture");
+       // self.depth_texture = Texture::create_depth_texture(&self.canvas.device, &self.canvas.config, "depth_texture");
     }
 
     #[allow(unused_variables)]
     fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event)
+        //self.camera_controller.process_events(event)
+        false
     }
 
     fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform.update_view_proj(&self.camera);
-        self.canvas.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        //self.camera_controller.update_camera(&mut self.camera);
+        //self.camera_uniform.update_view_proj(&self.camera);
+        //self.canvas.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -223,18 +250,29 @@ impl Engine {
                                 }
                             ),
                             store: true,
-                        }
+                        },
                     })
                 ],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                depth_stencil_attachment: /*Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
                     }),
                     stencil_ops: None,
-                }),
+                })*/ None,
             });
+
+            //render_pass.set_pipeline(&self.render_pipeline);
+
+            //render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            //render_pass.set_index_buffer(self.index_buffer.slice(..), Uint16);
+            //render_pass.draw_indexed(0..self.num_indices, 0,0..1);
+
+            let mut drawer = ShapeDrawer::new(&mut render_pass);
+            drawer.draw_shape(&self.polygon);
+            drawer.draw_shape(&self.rectangle);
+            drawer.draw_shape(&self.triangle);
 
             // NEW!
             /*
@@ -248,14 +286,16 @@ impl Engine {
             // UPDATED!
             render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
              */
-
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            /*render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
             render_pass.set_pipeline(&self.render_pipeline);
 
             let mesh = &self.obj_model.meshes[0];
             let material = &self.obj_model.materials[mesh.material];
+
+
             render_pass.draw_mesh_instanced(mesh, material, 0..self.instances.len() as u32, &self.camera_bind_group);
+             */
         }
 
         self.canvas.queue.submit(iter::once(encoder.finish()));
@@ -267,7 +307,7 @@ impl Engine {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
-    let (event_loop, window) = HermitWindow::new(WindowData::new(true, "HERMIT ENGINE".to_string(), PhysicalSize::new(800,800))).await;
+    let (event_loop, window) = HermitWindow::new(WindowData::new(true, "HERMIT ENGINE".to_string(), PhysicalSize::new(800, 800))).await;
 
     // State::new uses async code, so we're going to wait for it to finish
     let mut engine = Engine::new(&window).await;
@@ -324,41 +364,25 @@ pub async fn run() {
     });
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct ColorVertex {
-    position: [f32; 3],
-    color: [f32; 3],
-}
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [-0.0868241, 0.49240386, 0.0], color_or_coord: [1.0, 0.0, 0.0] }, // A
+    Vertex { position: [-0.49513406, 0.06958647, 0.0], color_or_coord: [0.0, 1.0, 0.0] }, // B
+    Vertex { position: [-0.21918549, -0.44939706, 0.0], color_or_coord: [1.0, 1.0, 0.0] }, // C
+    Vertex { position: [0.35966998, -0.3473291, 0.0], color_or_coord: [0.0, 0.0, 1.0] }, // D
+    Vertex { position: [0.44147372, 0.2347359, 0.0], color_or_coord: [1.0, 0.0, 1.0] }, // E
+];
 
-impl ColorVertex {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<ColorVertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x3,
-                }
-            ]
-        }
-    }
-}
+const VERTICES2: &[Vertex; 4] = &[
+    Vertex { position: [-1.0,1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [0.0,1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [0.0,-0.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [-1.0,0.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+];
 
-/*
-const VERTICES: &[ColorVertex] = &[
-    ColorVertex { position: [-0.0868241, 0.49240386, 0.0], color: [0.0, 0.0, 0.5] }, // A
-    ColorVertex { position: [-0.49513406, 0.06958647, 0.0], color: [0.0, 0.0, 0.5] }, // B
-    ColorVertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.0, 0.0, 0.5] }, // C
-    ColorVertex { position: [0.35966998, -0.3473291, 0.0], color: [0.5, 0.0, 0.5] }, // D
-    ColorVertex { position: [0.44147372, 0.2347359, 0.0], color: [0.5, 0.0, 0.5] }, // E
+const VERTICES3: &[Vertex; 3] = &[
+    Vertex { position: [0.5,0.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [0.0,-1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
+    Vertex { position: [1.0,-1.0,0.0], color_or_coord: [1.0,0.0,0.0] },
 ];
 
 const INDICES: &[u16] = &[
@@ -366,4 +390,8 @@ const INDICES: &[u16] = &[
     1, 2, 4,
     2, 3, 4,
 ];
- */
+
+const INDICES2: &[u16; 6] = &[
+    0, 2, 1,
+    0, 3, 2,
+];

@@ -1,4 +1,4 @@
-use wgpu::{BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingType, Buffer, ShaderStages};
+use wgpu::{BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingResource, BindingType, Buffer, ShaderStages};
 use crate::rendering::canvas::Canvas;
 
 pub struct BindGroupBuilder {
@@ -50,6 +50,12 @@ impl GroupEntry {
         BindGroupEntry {
             binding,
             resource: buffer.as_entire_binding(),
+        }
+    }
+    pub fn new_binding_resource(binding: u32, resource: BindingResource) -> BindGroupEntry {
+        BindGroupEntry {
+            binding,
+            resource,
         }
     }
 }

@@ -5,6 +5,7 @@ use wgpu::util::DeviceExt;
 
 use crate::rendering::model;
 use crate::util::textures;
+use crate::util::textures::Texture;
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -144,6 +145,8 @@ pub async fn load_model(
                 contents: bytemuck::cast_slice(&m.mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
+
+
 
             model::Mesh {
                 name: file_name.to_string(),
